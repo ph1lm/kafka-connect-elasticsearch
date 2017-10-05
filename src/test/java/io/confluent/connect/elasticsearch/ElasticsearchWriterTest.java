@@ -18,6 +18,7 @@ package io.confluent.connect.elasticsearch;
 
 import com.carrotsearch.randomizedtesting.annotations.ThreadLeakScope;
 
+import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.connect.data.Decimal;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
@@ -145,6 +146,41 @@ public class ElasticsearchWriterTest extends ElasticsearchSinkTestBase {
     expected.add(sinkRecord);
 
     sinkRecord = new SinkRecord(TOPIC, PARTITION, Schema.STRING_SCHEMA, key, otherSchema, otherRecord, 3);
+    records.add(sinkRecord);
+    expected.add(sinkRecord);
+
+    writeDataAndRefresh(writer, records);
+    verifySearchResults(expected, ignoreKey, ignoreSchema);
+  }
+
+  @Test
+  public void testCompatibleWithMeta() throws Exception {
+    final boolean ignoreKey = true;
+    final boolean ignoreSchema = false;
+
+    Collection<SinkRecord> records = new ArrayList<>();
+    Collection<SinkRecord> expected = new ArrayList<>();
+    SinkRecord sinkRecord = new SinkRecord(TOPIC, PARTITION, Schema.STRING_SCHEMA, key, schema, record, 0,
+        System.currentTimeMillis(), TimestampType.CREATE_TIME);
+    records.add(sinkRecord);
+    expected.add(sinkRecord);
+    sinkRecord = new SinkRecord(TOPIC, PARTITION, Schema.STRING_SCHEMA, key, schema, record, 1,
+        System.currentTimeMillis(), TimestampType.CREATE_TIME);
+    records.add(sinkRecord);
+    expected.add(sinkRecord);
+
+    ElasticsearchWriter writer = initWriter(client, ignoreKey, ignoreSchema);
+
+    writer.write(records);
+    records.clear();
+
+    sinkRecord = new SinkRecord(TOPIC, PARTITION, Schema.STRING_SCHEMA, key, otherSchema, otherRecord, 2,
+        System.currentTimeMillis(), TimestampType.CREATE_TIME);
+    records.add(sinkRecord);
+    expected.add(sinkRecord);
+
+    sinkRecord = new SinkRecord(TOPIC, PARTITION, Schema.STRING_SCHEMA, null, otherSchema, otherRecord, 3,
+        System.currentTimeMillis(), TimestampType.CREATE_TIME);
     records.add(sinkRecord);
     expected.add(sinkRecord);
 

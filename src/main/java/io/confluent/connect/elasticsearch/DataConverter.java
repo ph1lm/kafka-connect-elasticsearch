@@ -30,24 +30,47 @@ import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.json.JsonConverter;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.apache.kafka.connect.storage.Converter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
+import java.util.TimeZone;
 
 import static io.confluent.connect.elasticsearch.ElasticsearchSinkConnectorConstants.MAP_KEY;
 import static io.confluent.connect.elasticsearch.ElasticsearchSinkConnectorConstants.MAP_VALUE;
 
 public class DataConverter {
 
+  private static final Logger log = LoggerFactory.getLogger(DataConverter.class);
+
   private static final Converter JSON_CONVERTER;
+  private static final String KAFKA_KEY = "kafkaKey";
+  private static final String KAFKA_VALUE = "kafkaValue";
+  private static final String KAFKA_TOPIC = "kafkaTopic";
+  private static final String KAFKA_PARTITION = "kafkaPartition";
+  private static final String KAFKA_OFFSET = "kafkaOffset";
+  private static final String KAFKA_TIMESTAMP = "@kafkaTimestamp";
+
   static {
     JSON_CONVERTER = new JsonConverter();
     JSON_CONVERTER.configure(Collections.singletonMap("schemas.enable", "false"), false);
   }
+
+  private static final ThreadLocal<DateFormat> DATE_FORMAT_ISO8601_UTC = new ThreadLocal<DateFormat>() {
+    @Override
+    protected DateFormat initialValue() {
+      DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'");
+      dateFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
+      return dateFormat;
+    }
+  };
 
   private static String convertKey(Schema keySchema, Object key) {
     if (key == null) {
@@ -84,8 +107,8 @@ public class DataConverter {
       id = DataConverter.convertKey(record.keySchema(), record.key());
     }
 
-    final Schema schema;
-    final Object value;
+    Schema schema;
+    Object value;
     if (!ignoreSchema) {
       schema = preProcessSchema(record.valueSchema());
       value = preProcessValue(record.value(), record.valueSchema(), schema);
@@ -94,9 +117,68 @@ public class DataConverter {
       value = record.value();
     }
 
+    schema = addMetaInfo(schema, record);
+    value = addMetaInfo(schema, value, record);
+
     final String payload = new String(JSON_CONVERTER.fromConnectData(record.topic(), schema, value), StandardCharsets.UTF_8);
     final Long version = ignoreKey ? null : record.kafkaOffset();
     return new IndexableRecord(new Key(index, type, id), payload, version);
+  }
+
+  private static Object addMetaInfo(Schema schema, Object value, SinkRecord record) {
+    try {
+      Struct topicStruct = new Struct(schema.field(record.topic()).schema());
+      if (record.key() != null) {
+        topicStruct.put(KAFKA_KEY, preProcessValue(record.key(), record.keySchema(),
+            schema.field(record.topic()).schema().field(KAFKA_KEY).schema()));
+      }
+      topicStruct.put(KAFKA_VALUE, value);
+
+      Struct struct = new Struct(schema);
+      struct.put(record.topic(), topicStruct);
+      if (record.timestamp() != null) {
+        struct.put(KAFKA_TIMESTAMP, DATE_FORMAT_ISO8601_UTC.get().format(new java.util.Date(record.timestamp())));
+      }
+      struct.put(KAFKA_TOPIC, record.topic());
+      struct.put(KAFKA_PARTITION, record.kafkaPartition());
+      struct.put(KAFKA_OFFSET, record.kafkaOffset());
+
+      return struct;
+    } catch (Exception e) {
+      log.error("Unable to add meta to value: (schema: {}, value: {}, record: {})", schema, value, record);
+      throw e;
+    }
+  }
+
+  private static Schema addMetaInfo(Schema schema, SinkRecord record) {
+    try {
+      return SchemaBuilder.struct().name(record.topic())
+          .field(record.topic(), SchemaBuilder.struct()
+              .field(KAFKA_KEY, makeOptional(preProcessSchema(record.keySchema())))
+              .field(KAFKA_VALUE, schema))
+          .field(KAFKA_TOPIC, Schema.OPTIONAL_STRING_SCHEMA)
+          .field(KAFKA_PARTITION, Schema.OPTIONAL_INT32_SCHEMA)
+          .field(KAFKA_OFFSET, Schema.OPTIONAL_INT64_SCHEMA)
+          .field(KAFKA_TIMESTAMP, Schema.OPTIONAL_STRING_SCHEMA)
+          .build();
+    } catch (Exception e) {
+      log.error("Unable to add meta to schema: (schema: {}, record: {})", schema, record);
+      throw e;
+    }
+  }
+
+  private static Schema makeOptional(Schema schema) {
+    if (schema instanceof ConnectSchema) {
+      ConnectSchema connectSchema = (ConnectSchema) schema;
+      return new ConnectSchema(connectSchema.type(), true, connectSchema.defaultValue(), connectSchema.name(),
+          connectSchema.version(), connectSchema.doc(), connectSchema.parameters(),
+          connectSchema.type() == Schema.Type.STRUCT ? connectSchema.fields() : null,
+          connectSchema.type() == Schema.Type.MAP ? connectSchema.keySchema() : null,
+          connectSchema.type() == Schema.Type.MAP
+              || connectSchema.type() == Schema.Type.ARRAY ? connectSchema.valueSchema() : null);
+    } else {
+      return schema;
+    }
   }
 
   // We need to pre process the Kafka Connect schema before converting to JSON as Elasticsearch
