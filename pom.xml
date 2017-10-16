@@ -9,8 +9,8 @@
     <version>3.2.3-SNAPSHOT</version>
 
     <properties>
-        <confluent.version>3.2.3-SNAPSHOT</confluent.version>
-        <kafka.version>0.10.2.2-SNAPSHOT</kafka.version>
+        <confluent.version>3.2.1</confluent.version>
+        <kafka.version>0.10.2.1-cp1</kafka.version>
         <junit.version>4.12</junit.version>
         <es.version>2.4.1</es.version>
         <lucene.version>5.5.2</lucene.version>

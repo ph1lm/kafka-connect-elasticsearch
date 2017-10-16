@@ -195,6 +195,10 @@ public class ElasticsearchWriter {
       final boolean ignoreKey = ignoreKeyTopics.contains(sinkRecord.topic()) || this.ignoreKey;
       final boolean ignoreSchema = ignoreSchemaTopics.contains(sinkRecord.topic()) || this.ignoreSchema;
 
+      if (!ignoreSchema && sinkRecord.valueSchema() == null) {
+        continue;
+      }
+
       if (!ignoreSchema && !existingMappings.contains(index)) {
         try {
           if (Mapping.getMapping(client, index, type) == null) {
