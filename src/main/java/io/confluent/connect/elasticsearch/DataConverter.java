@@ -132,7 +132,10 @@ public class DataConverter {
         topicStruct.put(KAFKA_KEY, preProcessValue(record.key(), record.keySchema(),
             schema.field(record.topic()).schema().field(KAFKA_KEY).schema()));
       }
-      topicStruct.put(KAFKA_VALUE, value);
+
+      if (value != null) {
+        topicStruct.put(KAFKA_VALUE, value);
+      }
 
       Struct struct = new Struct(schema);
       struct.put(record.topic(), topicStruct);

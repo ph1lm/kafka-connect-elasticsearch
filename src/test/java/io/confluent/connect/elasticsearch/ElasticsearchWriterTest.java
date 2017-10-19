@@ -48,6 +48,7 @@ public class ElasticsearchWriterTest extends ElasticsearchSinkTestBase {
   private final Schema schema = createSchema();
   private final Struct record = createRecord(schema);
   private final Schema otherSchema = createOtherSchema();
+  private final Schema otherSchemaOptional = createOtherSchema(true);
   private final Struct otherRecord = createOtherRecord(otherSchema);
 
   @Test
@@ -180,6 +181,11 @@ public class ElasticsearchWriterTest extends ElasticsearchSinkTestBase {
     expected.add(sinkRecord);
 
     sinkRecord = new SinkRecord(TOPIC, PARTITION, Schema.STRING_SCHEMA, null, otherSchema, otherRecord, 3,
+        System.currentTimeMillis(), TimestampType.CREATE_TIME);
+    records.add(sinkRecord);
+    expected.add(sinkRecord);
+
+    sinkRecord = new SinkRecord(TOPIC, PARTITION, Schema.STRING_SCHEMA, null, otherSchemaOptional, null, 4,
         System.currentTimeMillis(), TimestampType.CREATE_TIME);
     records.add(sinkRecord);
     expected.add(sinkRecord);

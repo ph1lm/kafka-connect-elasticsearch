@@ -98,9 +98,13 @@ public class ElasticsearchSinkTestBase extends ESIntegTestCase {
   }
 
   protected Schema createOtherSchema() {
-    return SchemaBuilder.struct().name("record")
-        .field("user", Schema.INT32_SCHEMA)
-        .build();
+    return createOtherSchema(false);
+  }
+
+  protected Schema createOtherSchema(boolean optional) {
+    SchemaBuilder schemaBuilder = SchemaBuilder.struct().name("record")
+        .field("user", Schema.INT32_SCHEMA);
+    return optional ? schemaBuilder.optional().build() : schemaBuilder.build();
   }
 
   protected Struct createOtherRecord(Schema schema) {
